@@ -1,29 +1,160 @@
-# Internet Programming - Terraform Deploy on Azure
+ได้ อันนี้ผมเขียนใหม่ให้เลย แบบ **คนละสำนวนกับอันก่อนชัดเจน** และปรับให้เป็น **Azure ทั้งหมด** สำหรับเอาไปใส่ README หรือส่งอาจารย์ได้
 
-โปรเจคนี้ใช้ Terraform สำหรับ provision infrastructure บน Microsoft Azure
-และ deploy โปรเจคเว็บจาก GitHub อัตโนมัติลงบน Linux VM
+---
 
-## Architecture
-- Azure Resource Group
-- Virtual Network
-- Subnet
-- Public IP
-- Network Security Group
-- Network Interface
-- Ubuntu Linux VM
-- Apache + PHP + MariaDB
-- Git clone web project from GitHub
+# คู่มือการรันโปรเจกต์ Web Sport Rental System ด้วย Terraform บน Azure
+## สิ่งที่ต้องเตรียมก่อนเริ่มใช้งาน
 
-## Web Project Repository
-โปรเจคเว็บที่ถูก deploy:
-`https://github.com/omorom/web_sport_customer.git`
+ก่อนทำการ deploy ระบบ จำเป็นต้องติดตั้งและเตรียมเครื่องมือให้พร้อม ได้แก่
 
-## Prerequisites
-ติดตั้งเครื่องมือเหล่านี้ก่อน:
-- Terraform
-- Azure CLI
-- SSH key
+* Terraform CLI
+* Azure CLI
+* Git
+* Azure Account ที่มีสิทธิ์สร้างทรัพยากรได้
 
-## 1) Login Azure
+เมื่อเครื่องมือพร้อมแล้ว ให้เปิด terminal หรือ PowerShell เพื่อใช้รันคำสั่งต่าง ๆ ในลำดับถัดไป
+
+## ขั้นตอนที่ 1 เชื่อมต่อ Azure Account
+
+เริ่มต้นจากการเข้าสู่ระบบ Azure ผ่าน Azure CLI โดยใช้คำสั่งต่อไปนี้
+
 ```bash
 az login
+```
+
+หลังจากรันคำสั่ง ระบบจะเปิดหน้า browser เพื่อให้ลงชื่อเข้าใช้บัญชี Azure จากนั้นให้เลือก subscription ที่ต้องการใช้กับโปรเจกต์นี้ให้เรียบร้อย หากมีหลาย subscription สามารถตรวจสอบได้ด้วยคำสั่ง
+
+```bash
+az account show
+```
+
+ในกรณีที่ต้องการสลับ subscription ให้ใช้คำสั่ง
+
+```bash
+az account set --subscription "ชื่อหรือรหัส Subscription"
+```
+
+## ขั้นตอนที่ 2 เตรียม SSH Key สำหรับเข้าใช้งาน VM
+
+ระบบนี้ deploy ลงบน Azure Linux Virtual Machine ดังนั้นต้องมี SSH Key สำหรับใช้เชื่อมต่อกับเครื่อง VM หากยังไม่มี key สามารถสร้างได้ด้วยคำสั่ง
+
+```bash
+ssh-keygen -t rsa -b 4096
+```
+
+เมื่อสร้างเสร็จจะได้ไฟล์ public key และ private key โดยให้นำค่า public key ไปใช้ในไฟล์กำหนดค่าของ Terraform เพื่อให้ Azure สร้าง VM ที่สามารถเข้าถึงได้ด้วย SSH
+
+## ขั้นตอนที่ 3 ดาวน์โหลดหรือ clone Terraform Repository
+
+ให้ clone repository ที่เก็บไฟล์ Terraform ลงมาไว้ในเครื่อง จากนั้นเปิดโฟลเดอร์โปรเจกต์ขึ้นมา จะพบไฟล์สำคัญที่ใช้สำหรับ deploy ระบบ เช่น
+
+* `provider.tf`
+* `main.tf`
+* `variables.tf`
+* `outputs.tf`
+* `terraform.tfvars.example`
+
+จากนั้นให้สร้างไฟล์ `terraform.tfvars` ขึ้นมาใหม่ โดยอ้างอิงรูปแบบจาก `terraform.tfvars.example` แล้วกรอกค่าที่จำเป็นให้ครบ
+
+## ขั้นตอนที่ 4 กำหนดค่าตัวแปรของระบบ
+
+ในไฟล์ `terraform.tfvars` ให้ระบุค่าที่ใช้สำหรับสร้างทรัพยากรบน Azure เช่น
+
+* ชื่อ resource group
+* region หรือ location
+* ชื่อ virtual machine
+* ขนาดของ VM
+* ชื่อผู้ใช้สำหรับเข้าเครื่อง
+* SSH public key
+* port ของระบบเว็บ
+
+การแยกค่าพวกนี้ไว้ในตัวแปรจะช่วยให้เปลี่ยนค่าได้ง่ายโดยไม่ต้องเข้าไปแก้โค้ดหลักของ Terraform
+
+## ขั้นตอนที่ 5 ทำความเข้าใจหน้าที่ของไฟล์แต่ละส่วน
+
+ไฟล์ `provider.tf` ใช้กำหนดว่าโปรเจกต์นี้จะทำงานกับ Azure ผ่าน provider ตัวใด
+
+ไฟล์ `variables.tf` ใช้ประกาศตัวแปรทั้งหมดที่ระบบต้องใช้ เช่น location, vm size, username และค่าการตั้งค่าอื่น ๆ
+
+ไฟล์ `main.tf` เป็นไฟล์หลักที่ใช้สร้าง resource ต่าง ๆ บน Azure เช่น resource group, network, public IP, security rule, network interface และ Linux virtual machine รวมถึงส่วนที่ใช้ติดตั้ง environment ที่จำเป็นสำหรับเว็บแอปพลิเคชัน
+
+ไฟล์ `outputs.tf` ใช้สำหรับแสดงค่าที่ต้องนำไปใช้หลัง deploy เสร็จ เช่น IP Address ของเครื่อง หรือ URL สำหรับเปิดเว็บไซต์
+
+## ขั้นตอนที่ 6 เริ่มต้น Terraform
+
+เมื่อกำหนดค่าทุกอย่างเรียบร้อยแล้ว ให้เข้าไปยังโฟลเดอร์ Terraform และรันคำสั่ง
+
+```bash
+terraform init
+```
+
+คำสั่งนี้ใช้สำหรับเตรียม provider และ module ที่จำเป็นให้พร้อมก่อนเริ่มทำงานจริง
+
+## ขั้นตอนที่ 7 ตรวจสอบแผนการสร้างทรัพยากร
+
+หลังจาก init เรียบร้อยแล้ว ให้ตรวจสอบก่อนว่า Terraform จะสร้างอะไรบ้าง ด้วยคำสั่ง
+
+```bash
+terraform plan
+```
+
+คำสั่งนี้จะช่วยให้เห็นภาพรวมว่า Azure จะถูกสร้าง resource อะไรบ้าง เช่น VM, network, public IP และ security group รวมถึงช่วยตรวจสอบว่าค่าที่ตั้งไว้มีความถูกต้องหรือไม่
+
+## ขั้นตอนที่ 8 สร้าง Infrastructure และ Deploy ระบบ
+
+เมื่อ plan ไม่มีปัญหา ให้รันคำสั่ง
+
+```bash
+terraform apply
+```
+
+จากนั้นระบบจะถามเพื่อยืนยันการทำงาน ให้พิมพ์
+
+```bash
+yes
+```
+
+Terraform จะเริ่มสร้างทรัพยากรทั้งหมดบน Azure โดยอัตโนมัติ และในขั้นตอนเดียวกันนี้ระบบจะตั้งค่าเครื่อง VM ให้พร้อมใช้งานสำหรับโปรเจกต์ Web Sport Rental System เช่น ติดตั้ง web server, runtime ที่จำเป็น, clone source code และเตรียมระบบให้พร้อมเปิดใช้งานผ่าน browser
+
+## ขั้นตอนที่ 9 ตรวจสอบผลลัพธ์หลังสร้างเสร็จ
+
+เมื่อการ deploy สำเร็จ ให้ใช้คำสั่ง
+
+```bash
+terraform output
+```
+
+ระบบจะแสดงข้อมูลสำคัญที่จำเป็นต่อการเข้าใช้งาน เช่น Public IP หรือ URL ของระบบ จากนั้นให้นำค่าที่ได้ไปเปิดผ่าน browser ในรูปแบบ
+
+```bash
+http://<public-ip>
+```
+
+หากทุกอย่างทำงานถูกต้อง เว็บไซต์ของระบบจะสามารถเปิดใช้งานได้ทันที
+
+## ขั้นตอนที่ 10 ทดสอบการเข้าสู่ระบบ
+
+หลังจากหน้าเว็บแสดงผลแล้ว สามารถใช้บัญชีตัวอย่างสำหรับทดสอบระบบได้ดังนี้
+
+| บทบาทผู้ใช้       | Email                                               | Password       |
+| ----------------- | --------------------------------------------------- | -------------- |
+
+
+บัญชีเหล่านี้ใช้สำหรับทดสอบฟังก์ชันของระบบภายในขอบเขตของโครงการเท่านั้น
+
+## ขั้นตอนที่ 11 ลบทรัพยากรเมื่อใช้งานเสร็จ
+
+เมื่อทดสอบเสร็จและไม่ต้องการใช้งานทรัพยากรบน Azure ต่อแล้ว สามารถลบทุกอย่างที่ Terraform สร้างไว้ได้ด้วยคำสั่ง
+
+```bash
+terraform destroy
+```
+
+จากนั้นพิมพ์
+
+```bash
+yes
+```
+
+ระบบจะทำการลบ infrastructure ทั้งหมดที่เกี่ยวข้องกับโปรเจกต์นี้ออกจาก Azure เพื่อลดการใช้ทรัพยากรและป้องกันค่าใช้จ่ายที่ไม่จำเป็น
+
