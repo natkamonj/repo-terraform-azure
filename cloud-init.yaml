@@ -1,0 +1,59 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - apache2
+  - php
+  - php-mysql
+  - mariadb-server
+  - git
+
+write_files:
+  - path: /usr/local/bin/deploy_websport.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -e
+
+      WEB_ROOT="/var/www/html"
+      REPO_URL="https://github.com/natkamonj/web_sport_customer.git"
+      APP_DIR="/opt/web_sport_customer"
+
+      echo "=== START DEPLOY ==="
+
+      # Start services
+      systemctl enable apache2
+      systemctl start apache2
+
+      systemctl enable mariadb
+      systemctl start mariadb
+
+      # Clone repo
+      rm -rf "$APP_DIR"
+      git clone "$REPO_URL" "$APP_DIR"
+
+      # Create database
+      mysql -e "CREATE DATABASE IF NOT EXISTS sports_rental_system;"
+
+      # Import SQL
+      if [ -f "$APP_DIR/sports_rental_system.sql" ]; then
+        mysql sports_rental_system < "$APP_DIR/sports_rental_system.sql"
+      fi
+
+      # Deploy web
+      rm -rf ${WEB_ROOT}/*
+      cp -r ${APP_DIR}/* ${WEB_ROOT}/
+
+      # Fix permissions
+      chown -R www-data:www-data ${WEB_ROOT}
+      find ${WEB_ROOT} -type d -exec chmod 755 {} \;
+      find ${WEB_ROOT} -type f -exec chmod 644 {} \;
+
+      # Restart apache
+      systemctl restart apache2
+
+      echo "=== DEPLOY DONE ==="
+
+runcmd:
+  - bash /usr/local/bin/deploy_websport.sh
